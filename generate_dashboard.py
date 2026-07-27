@@ -56,6 +56,16 @@ for b in brands:
         if d and len(d)>=7: m[d[:7]] += 1
     monthly[b] = [m.get(k,0) for k in all_months]
 
+# Monthly active bloggers
+mb = {}
+for b in brands:
+    mba = {m:set() for m in all_months}
+    for r in data[b]:
+        d = r['date']
+        if d and len(d)>=7 and r['author']:
+            mba[d[:7]].add(r['author'])
+    mb[b] = [len(mba[m]) for m in all_months]
+
 ua = {}
 for b in brands:
     u = set()
@@ -91,9 +101,11 @@ for b in brands:
 
 def j(o): return json.dumps(o, ensure_ascii=False)
 
-def gen(title, sub, l1, l2, l3, l4, ml, pl, bt, lang):
+def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
     prod_labels = {"power":"야외 전원/파워뱅크","ac":"에어컨","fridge":"냉장고/쿨러","solar":"태양광/솔라패널","accessory":"액세서리/편의용품","other":"기타"} if lang=="kr" else {"power":"户外电源/电池","ac":"空调","fridge":"冰箱/冷柜","solar":"太阳能/光伏板","accessory":"配件/周边","other":"其他"}
     c1 = j({"labels":all_months,"datasets":[{"label":brands[i],"data":monthly[brands[i]],"borderColor":colors[i],"backgroundColor":colors[i]+"30","fill":True,"tension":0.3,"pointRadius":3} for i in range(4)]})
+    c5 = j({"labels":all_months,"datasets":[{"label":brands[i],"data":mb[brands[i]],"borderColor":colors[i],"backgroundColor":colors[i]+"30","fill":false,"tension":0.3,"pointRadius":3,"borderDash":[5,5]} for i in range(4)]})
+    c5o =     o5 = j({"responsive":True,"maintainAspectRatio":False,"plugins":{"legend":{"position":"top"}},"scales":{"x":{"title":{"display":True,"text":ml}},"y":{"beginAtZero":True,"title":{"display":True,"text":"Active Bloggers"}}}})
     c2 = j({"labels":[brands[0],brands[1],brands[2],brands[3]],"datasets":[{"label":bt,"data":[ua[b] for b in brands],"backgroundColor":colors}]})
     topL = [n[:12]+".." if len(n)>12 else n for n in top12]
     c3 = j({"labels":topL,"datasets":[{"label":brands[i],"data":td[brands[i]],"backgroundColor":colors[i]} for i in range(4)]})
@@ -122,6 +134,7 @@ def gen(title, sub, l1, l2, l3, l4, ml, pl, bt, lang):
     h += 'new Chart("c2",{type:"bar",data:' + c2 + ',options:' + o2 + '});'
     h += 'new Chart("c3",{type:"bar",data:' + c3 + ',options:' + o3 + '});'
     h += 'new Chart("c4",{type:"bar",data:' + c4 + ',options:' + o4 + '});'
+    h += 'new Chart("c5",{type:"line",data:' + c5 + ',options:' + c5o + '});'
     h += '</script></body></html>'
     h += '<!-- Click any chart bar/point to open Naver blog search for that brand -->'
     return h
@@ -130,8 +143,8 @@ print("Generating HTML...")
 kr_sub = '기간: 2025.07.20 ~ ' + TODAY_STR + ' | 출처: section.blog.naver.com'
 cn_sub = '期间: 2025.07.20 ~ ' + TODAY_STR + ' | 数据来源: section.blog.naver.com'
 
-kr = gen('4대 파워뱅크 브랜드 Naver Blog 비교 분석', kr_sub, '1. 게시 시계열 분석 (월별 포스팅 수)', '2. 고유 포스팅 기여자 수', '3. Top 활성 블로그', '4. 제품 카테고리 분포', '월', '게시물 수', '기여자 수', 'kr')
-cn = gen('4大户外电源品牌 Naver Blog 对比分析', cn_sub, '1. 发帖时间趋势 (月度帖子数)', '2. 独立博主数量', '3. Top 活跃博主', '4. 产品类别分布', '月份', '帖子数', '博主数', 'cn')
+kr = gen('4대 파워뱅크 브랜드 Naver Blog 비교 분석', kr_sub, '1. 게시 시계열 분석 (월별 포스팅 수)', '2. 고유 포스팅 기여자 수', '3. Top 활성 블로그', '4. 제품 카테고리 분포', '5. 월별 활성 블로그 수', '월', '게시물 수', '기여자 수', 'kr')
+cn = gen('4大户外电源品牌 Naver Blog 对比分析', cn_sub, '1. 发帖时间趋势 (月度帖子数)', '2. 独立博主数量', '3. Top 活跃博主', '4. 产品类别分布', '5. 月度活跃博主数', '月份', '帖子数', '博主数', 'cn')
 
 with open('brand_comparison_dashboard.html','w',encoding='utf-8') as f: f.write(kr)
 with open('brand_comparison_dashboard_cn.html','w',encoding='utf-8') as f: f.write(cn)
