@@ -121,7 +121,7 @@ def j(o): return json.dumps(o, ensure_ascii=False)
 def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
     prod_labels = {"power":"야외 전원/파워뱅크","ac":"에어컨","fridge":"냉장고/쿨러","solar":"태양광/솔라패널","accessory":"액세서리/편의용품","other":"기타"} if lang=="kr" else {"power":"户外电源/电池","ac":"空调","fridge":"冰箱/冷柜","solar":"太阳能/光伏板","accessory":"配件/周边","other":"其他"}
     c1 = j({"labels":all_months,"datasets":[{"label":brands[i],"data":monthly[brands[i]],"borderColor":colors[i],"backgroundColor":colors[i]+"30","fill":True,"tension":0.3,"pointRadius":3} for i in range(4)]})
-    c5 = j({"labels":all_months,"datasets":[{"label":brands[i],"data":mb[brands[i]],"borderColor":colors[i],"backgroundColor":colors[i]+"30","fill":False,"tension":0.3,"pointRadius":3,"borderDash":[5,5]} for i in range(4)]})
+    c5 = j({"labels":all_months,"datasets":[{"label":brands[i],"data":mb[brands[i]],"borderColor":colors[i],"backgroundColor":colors[i]+"30","fill":False,"tension":0.3,"pointRadius":3} for i in range(4)]})
     c5o = j({"responsive":True,"maintainAspectRatio":False,"plugins":{"legend":{"position":"top"}},"scales":{"x":{"title":{"display":True,"text":ml}},"y":{"beginAtZero":True,"title":{"display":True,"text":"Active Bloggers"}}}})
     c2 = j({"labels":[brands[0],brands[1],brands[2],brands[3]],"datasets":[{"label":bt,"data":[ua[b] for b in brands],"backgroundColor":colors}]})
     topL = [n[:12]+".." if len(n)>12 else n for n in top12]
