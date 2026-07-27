@@ -1,0 +1,24 @@
+name: Daily Dashboard Update
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install openpyxl
+      - name: Generate dashboard
+        run: python generate_dashboard.py
+      - name: Commit and push
+        run: |
+          git config user.name "dashboard-bot"
+          git config user.email "bot@update.com"
+          git add brand_comparison_dashboard*.html
+          git diff --quiet && git diff --staged --quiet || (git commit -m "auto: update dashboard" && git push)
