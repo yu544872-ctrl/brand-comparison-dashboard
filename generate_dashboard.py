@@ -5,6 +5,7 @@ from datetime import datetime
 ctx = ssl._create_unverified_context()
 brands = ['Jackery','EcoFlow','Bluetti','AnkerSolix']
 colors = ['#FF6B35','#004472','#00A86B','#E84393']
+search_urls = {'Jackery': 'https://section.blog.naver.com/Search/Post.naver?keyword=jackery&orderBy=recentdate&rangeType=ALL', 'EcoFlow': 'https://section.blog.naver.com/Search/Post.naver?keyword=ecoflow&orderBy=recentdate&rangeType=ALL', 'Bluetti': 'https://section.blog.naver.com/Search/Post.naver?keyword=bluetti&orderBy=recentdate&rangeType=ALL', 'AnkerSolix': 'https://section.blog.naver.com/Search/Post.naver?keyword=anker+solix&orderBy=recentdate&rangeType=ALL'}
 
 NOW = datetime.now()
 TODAY_STR = NOW.strftime('%Y.%m.%d')
@@ -110,7 +111,7 @@ def gen(title, sub, l1, l2, l3, l4, ml, pl, bt, lang):
     h += '<h1>' + title + '</h1><p class="sub">' + sub + '</p><div class="grid">'
     for i,b in enumerate(brands):
         pct = round(totals[i]/mx*100)
-        h += '<div class="stat"><div class="n" style="color:' + colors[i] + '">' + str(totals[i]) + '</div><div class="l">' + b + '</div><div style="height:4px;border-radius:2px;background:' + colors[i] + ';width:' + str(pct) + '%;margin:8px auto 0"></div></div>'
+        h += '<div class="stat"><a href="' + search_urls[b] + '" target="_blank" style="text-decoration:none"><div class="n" style="color:' + colors[i] + '">' + str(totals[i]) + '</div></a><div class="l">' + b + '</div><div style="height:4px;border-radius:2px;background:' + colors[i] + ';width:' + str(pct) + '%;margin:8px auto 0"></div></div>'
     h += '</div>'
     h += '<div class="card"><h2>' + l1 + '</h2><div class="chart-box"><canvas id="c1"></canvas></div></div>'
     h += '<div class="two-cols"><div class="card"><h2>' + l2 + '</h2><div class="chart-box"><canvas id="c2"></canvas></div></div><div class="card"><h2>' + l3 + '</h2><div class="chart-box tall"><canvas id="c3"></canvas></div></div></div>'
