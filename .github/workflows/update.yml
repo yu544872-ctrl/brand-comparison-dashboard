@@ -1,4 +1,4 @@
-name: Daily Dashboard Update
+﻿name: Daily Dashboard Update
 on:
   schedule:
     - cron: "0 18 * * *"
@@ -16,9 +16,16 @@ jobs:
         run: pip install openpyxl
       - name: Generate dashboard
         run: python generate_dashboard.py
+      - name: Rename for Pages
+        run: |
+          cp brand_comparison_dashboard_cn.html index.html
+          cp brand_comparison_dashboard.html index_kr.html
       - name: Commit and push
         run: |
           git config user.name "dashboard-bot"
           git config user.email "bot@update.com"
-          git add brand_comparison_dashboard*.html
-          git diff --quiet && git diff --staged --quiet || (git commit -m "auto: update dashboard" && git push)
+          git add -A
+          git diff --quiet && git diff --staged --quiet || (
+            git commit -m "auto: update dashboard"
+            git push
+          )
