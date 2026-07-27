@@ -73,32 +73,6 @@ for b in brands:
         bm[a] = [ma[m] for m in all_months]
     top5_monthly[b] = {"bloggers": top5, "data": bm}
 
-
-# Blogger overlap analysis
-brand_authors = {}
-for b in brands:
-    brand_authors[b] = set()
-    for r in data[b]:
-        if r['author']: brand_authors[b].add(r['author'])
-author_brand_count = {}
-for a in set().union(*brand_authors.values()):
-    cnt = 0
-    for b in brands:
-        if a in brand_authors[b]: cnt += 1
-    author_brand_count[a] = cnt
-overlap_dist = [sum(1 for c in author_brand_count.values() if c == n) for n in range(1, 5)]
-exclusive_data = {}
-for b in brands:
-    others = [bs for bs in brands if bs != b]
-    exclusive_set = brand_authors[b].copy()
-    for ob in others:
-        exclusive_set -= brand_authors[ob]
-    posts = []
-    for a in exclusive_set:
-        cnt = sum(1 for r in data[b] if r['author'] == a)
-        if cnt > 0: posts.append(a)
-    exclusive_data[b] = posts[:10]
-
 # Monthly active bloggers
 mb = {}
 for b in brands:
@@ -178,37 +152,6 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
     h += 'new Chart("c2",{type:"bar",data:' + c2 + ',options:' + o2 + '});'
     h += 'new Chart("c3",{type:"bar",data:' + c3 + ',options:' + o3 + '});'
     h += 'new Chart("c4",{type:"bar",data:' + c4 + ',options:' + o4 + '});'
-
-    # Overlap distribution chart
-    od_labels = ["1 Brand Only","2 Brands","3 Brands","4 Brands"]
-    od_c = j({'labels':od_labels,'datasets':[{'label':'Bloggers','data':overlap_dist,'backgroundColor':['#FF6B35','#004472','#00A86B','#E84393']}]})
-    od_o = j({'responsive':True,'maintainAspectRatio':False,'plugins':{'legend':{'display':False}},'scales':{'y':{'beginAtZero':True,'title':{'display':True,'text':'Bloggers'}}}})
-    h += '<div class="card"><h2>Blogger Overlap Distribution</h2><div class="chart-box"><canvas id="c10"></canvas></div></div>'
-    h += 'new Chart("c10",{type:"bar",data:'+od_c+',options:'+od_o+'});'
-
-    # Exclusive bloggers combined chart
-    all_excl = []
-    for b in brands:
-        for a in exclusive_data[b]:
-            if a not in all_excl: all_excl.append(a)
-    all_excl = all_excl[:20]
-    excl_ds = []
-    for i,b in enumerate(brands):
-        lookup = {}
-        for a in exclusive_data[b]:
-            cnt = sum(1 for r in data[b] if r['author']==a)
-            lookup[a] = cnt
-        data_pts = [lookup.get(a,0) for a in all_excl]
-        excl_ds.append({'label':b,'data':data_pts,'backgroundColor':colors[i]})
-    # truncate long names
-    import re as re_m
-    excl_l = []
-    for a in all_excl:
-        excl_l.append(a[:15] + chr(46) + chr(46) if len(a) > 15 else a)
-    exc_c = j({'labels':excl_l,'datasets':excl_ds})
-    exc_o = j({'responsive':True,'maintainAspectRatio':False,'indexAxis':'y','plugins':{'legend':{'position':'top'}},'scales':{'x':{'stacked':True,'title':{'display':True,'text':'Posts'}},'y':{'title':{'display':True,'text':'Blogger'}}}})
-    h += '<div class="card"><h2>Top Exclusive Bloggers (Brand-Specific)</h2><div class="chart-box tall"><canvas id="c11"></canvas></div></div>'
-    h += 'new Chart("c11",{type:"bar",data:'+exc_c+',options:'+exc_o+'});'
     h += 'new Chart("c5",{type:"line",data:' + c5 + ',options:' + c5o + '});'
     h += '</script></body></html>'
     h += '<!-- Click any chart bar/point to open Naver blog search for that brand -->'
