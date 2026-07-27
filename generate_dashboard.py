@@ -155,6 +155,31 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
     h += 'new Chart("c5",{type:"line",data:' + c5 + ',options:' + c5o + '});'
     h += '</script></body></html>'
     h += '<!-- Click any chart bar/point to open Naver blog search for that brand -->'
+    # Monthly blogger breakdown table
+    h += '<div class="card"><h2>Monthly Blogger Breakdown</h2><div class="chart-box" style="height:auto;overflow-x:auto"><table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:12px;width:100%">'
+    h += '<tr style="background:#f0f0f0"><th>Month</th>'
+    for b in brands:
+        h += '<th style="text-align:center" colspan="3">' + b + '</th>'
+    h += '</tr>'
+    for m in all_months:
+        h += '<tr><td style="font-weight:bold">' + m + '</td>'
+        for b in brands:
+            bloggers_this_month = {}
+            for r in data[b]:
+                d = r['date']
+                if d and len(d)>=7 and d[:7]==m and r['author']:
+                    bloggers_this_month[r['author']] = bloggers_this_month.get(r['author'], 0) + 1
+            top = sorted(bloggers_this_month.items(), key=lambda x: -x[1])[:5]
+            total = sum(c for _,c in top)
+            if top:
+                h += '<td style="text-align:center;font-weight:bold;background:#f9f9f9">' + str(total) + '</td>'
+                h += '<td style="font-size:11px">' + '<br>'.join([a for a,_ in top]) + '</td>'
+                h += '<td style="text-align:center;font-size:11px">' + '<br>'.join([str(c) for _,c in top]) + '</td>'
+            else:
+                h += '<td style="background:#f9f9f9"></td><td></td><td></td>'
+        h += '</tr>'
+    h += '</table></div></div>'
+
     return h
 
 print("Generating HTML...")
