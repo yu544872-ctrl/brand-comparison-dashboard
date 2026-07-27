@@ -56,6 +56,23 @@ for b in brands:
         if d and len(d)>=7: m[d[:7]] += 1
     monthly[b] = [m.get(k,0) for k in all_months]
 
+# Top 5 bloggers per brand with monthly post counts
+top5_monthly = {}
+for b in brands:
+    c = Counter()
+    for r in data[b]:
+        if r['author']: c[r['author']] += 1
+    top5 = [a for a,_ in c.most_common(5)]
+    bm = {}
+    for a in top5:
+        ma = {m:0 for m in all_months}
+        for r in data[b]:
+            d = r['date']
+            if d and len(d)>=7 and r['author']==a:
+                ma[d[:7]] += 1
+        bm[a] = [ma[m] for m in all_months]
+    top5_monthly[b] = {"bloggers": top5, "data": bm}
+
 # Monthly active bloggers
 mb = {}
 for b in brands:
@@ -104,9 +121,7 @@ def j(o): return json.dumps(o, ensure_ascii=False)
 def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
     prod_labels = {"power":"야외 전원/파워뱅크","ac":"에어컨","fridge":"냉장고/쿨러","solar":"태양광/솔라패널","accessory":"액세서리/편의용품","other":"기타"} if lang=="kr" else {"power":"户外电源/电池","ac":"空调","fridge":"冰箱/冷柜","solar":"太阳能/光伏板","accessory":"配件/周边","other":"其他"}
     c1 = j({"labels":all_months,"datasets":[{"label":brands[i],"data":monthly[brands[i]],"borderColor":colors[i],"backgroundColor":colors[i]+"30","fill":True,"tension":0.3,"pointRadius":3} for i in range(4)]})
-    c5 = j({"labels":all_months,"datasets":[{"label":brands[i],"data":mb[brands[i]],"borderColor":colors[i],"backgroundColor":colors[i]+"30","fill":false,"tension":0.3,"pointRadius":3,"borderDash":[5,5]} for i in range(4)]})
-    c6 = j({})
-    c6o = j({})
+    c5 = j({"labels":all_months,"datasets":[{"label":brands[i],"data":mb[brands[i]],"borderColor":colors[i],"backgroundColor":colors[i]+"30","fill":False,"tension":0.3,"pointRadius":3,"borderDash":[5,5]} for i in range(4)]})
     c5o = j({"responsive":True,"maintainAspectRatio":False,"plugins":{"legend":{"position":"top"}},"scales":{"x":{"title":{"display":True,"text":ml}},"y":{"beginAtZero":True,"title":{"display":True,"text":"Active Bloggers"}}}})
     c2 = j({"labels":[brands[0],brands[1],brands[2],brands[3]],"datasets":[{"label":bt,"data":[ua[b] for b in brands],"backgroundColor":colors}]})
     topL = [n[:12]+".." if len(n)>12 else n for n in top12]
@@ -129,6 +144,7 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
         h += '<div class="stat"><a href="' + search_urls[b] + '" target="_blank" style="text-decoration:none"><div class="n" style="color:' + colors[i] + '">' + str(totals[i]) + '</div></a><div class="l">' + b + '</div><div style="height:4px;border-radius:2px;background:' + colors[i] + ';width:' + str(pct) + '%;margin:8px auto 0"></div></div>'
     h += '</div>'
     h += '<div class="card"><h2>' + l1 + '</h2><div class="chart-box"><canvas id="c1"></canvas></div></div>'
+    h += '<div class="card"><h2>' + l5 + '</h2><div class="chart-box"><canvas id="c5"></canvas></div></div>'
     h += '<div class="two-cols"><div class="card"><h2>' + l2 + '</h2><div class="chart-box"><canvas id="c2"></canvas></div></div><div class="card"><h2>' + l3 + '</h2><div class="chart-box tall"><canvas id="c3"></canvas></div></div></div>'
     h += '<div class="card"><h2>' + l4 + '</h2><div class="chart-box tall"><canvas id="c4"></canvas></div></div>'
     h += '<script>'
