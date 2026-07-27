@@ -1,8 +1,11 @@
-name: Daily Dashboard Update
+﻿name: Daily Dashboard Update
 on:
   schedule:
     - cron: "0 18 * * *"
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   update:
