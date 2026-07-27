@@ -26,6 +26,7 @@ def fetch(keyword):
             j = json.loads(data)
             sl = j.get("result", {}).get("searchList", [])
             if not sl: break
+            page_dates = [p.get("addDate", 0) / 1000 for p in sl if p.get("addDate")]
             for p in sl:
                 u = p.get("postUrl", "")
                 if u and u not in seen:
@@ -34,6 +35,7 @@ def fetch(keyword):
                     if start <= ts <= now:
                         posts.append({"date": datetime.fromtimestamp(ts).strftime('%Y-%m-%d'), "author": p.get("blogName", p.get("nickName", "")), "title": re.sub(r'<[^>]+>', '', p.get("title", "")).strip(), "content": re.sub(r'<[^>]+>', '', p.get("contents", "")).strip(), "url": u})
             print(f"  {keyword} p{page}: +{len(posts)}")
+            if page_dates and max(page_dates) < start: break
             tm.sleep(0.15)
         except: break
     posts.sort(key=lambda x: x['date'])
@@ -134,6 +136,8 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
 
     totals = [sum(monthly[b]) for b in brands]
     mx = max(totals)
+    if mx == 0:
+        raise RuntimeError('No Naver posts were fetched; refusing to overwrite dashboard files.')
 
     h = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>' + title + '</title>'
     h += '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>'
@@ -147,13 +151,33 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
     h += '<div class="card"><h2>' + l5 + '</h2><div class="chart-box"><canvas id="c5"></canvas></div></div>'
     h += '<div class="two-cols"><div class="card"><h2>' + l2 + '</h2><div class="chart-box"><canvas id="c2"></canvas></div></div><div class="card"><h2>' + l3 + '</h2><div class="chart-box tall"><canvas id="c3"></canvas></div></div></div>'
     h += '<div class="card"><h2>' + l4 + '</h2><div class="chart-box tall"><canvas id="c4"></canvas></div></div>'
+    click_js = (
+        "const brandSearchUrls=" + j(search_urls) + ";"
+        "function openBrandSearch(event,activeElements,chart){"
+        "const elements=chart.getElementsAtEventForMode(event,'nearest',{intersect:true},true);"
+        "if(!elements.length)return;"
+        "const element=elements[0];"
+        "const dataset=chart.data.datasets[element.datasetIndex];"
+        "const brand=chart.canvas.id==='c2'?chart.data.labels[element.index]:dataset.label;"
+        "const url=brandSearchUrls[brand];"
+        "if(url)window.open(url,'_blank','noopener,noreferrer');"
+        "}"
+        "function setChartCursor(event,activeElements,chart){"
+        "chart.canvas.style.cursor=activeElements.length?'pointer':'default';"
+        "}"
+        "['c1','c2','c3','c4','c5'].forEach(function(id){"
+        "const chart=Chart.getChart(id);"
+        "if(chart){chart.options.onClick=openBrandSearch;chart.options.onHover=setChartCursor;chart.update();}"
+        "});"
+    )
     h += '<script>'
     h += 'new Chart("c1",{type:"line",data:' + c1 + ',options:' + o1 + '});'
     h += 'new Chart("c2",{type:"bar",data:' + c2 + ',options:' + o2 + '});'
     h += 'new Chart("c3",{type:"bar",data:' + c3 + ',options:' + o3 + '});'
     h += 'new Chart("c4",{type:"bar",data:' + c4 + ',options:' + o4 + '});'
     h += 'new Chart("c5",{type:"line",data:' + c5 + ',options:' + c5o + '});'
-    h += '</script></body></html>'
+    h += click_js
+    h += '</script>'
     h += '<!-- Click any chart bar/point to open Naver blog search for that brand -->'
     # Monthly blogger breakdown table
     h += '<div class="card"><h2>Monthly Blogger Breakdown</h2><div class="chart-box" style="height:auto;overflow-x:auto"><table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:12px;width:100%">'
@@ -179,6 +203,7 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
                 h += '<td style="background:#f9f9f9"></td><td></td><td></td>'
         h += '</tr>'
     h += '</table></div></div>'
+    h += '</body></html>'
 
     return h
 
