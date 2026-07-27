@@ -5,6 +5,7 @@ from datetime import datetime
 ctx = ssl._create_unverified_context()
 brands = ['Jackery','EcoFlow','Bluetti','AnkerSolix']
 colors = ['#FF6B35','#004472','#00A86B','#E84393']
+keywords = {'Jackery': 'jackery', 'EcoFlow': 'ecoflow', 'Bluetti': 'bluetti', 'AnkerSolix': 'anker solix'}
 search_urls = {'Jackery': 'https://section.blog.naver.com/Search/Post.naver?keyword=jackery&orderBy=recentdate&rangeType=ALL', 'EcoFlow': 'https://section.blog.naver.com/Search/Post.naver?keyword=ecoflow&orderBy=recentdate&rangeType=ALL', 'Bluetti': 'https://section.blog.naver.com/Search/Post.naver?keyword=bluetti&orderBy=recentdate&rangeType=ALL', 'AnkerSolix': 'https://section.blog.naver.com/Search/Post.naver?keyword=anker+solix&orderBy=recentdate&rangeType=ALL'}
 
 NOW = datetime.now()
@@ -41,7 +42,7 @@ def fetch(keyword):
 print("Fetching data...")
 data = {}
 for b in brands:
-    kw = b.split()[0].lower()
+    kw = keywords[b]
     print(f"  {b}...")
     data[b] = fetch(kw)
     print(f"    {len(data[b])} posts")
@@ -122,6 +123,7 @@ def gen(title, sub, l1, l2, l3, l4, ml, pl, bt, lang):
     h += 'new Chart("c3",{type:"bar",data:' + c3 + ',options:' + o3 + '});'
     h += 'new Chart("c4",{type:"bar",data:' + c4 + ',options:' + o4 + '});'
     h += '</script></body></html>'
+    h += '<!-- Click any chart bar/point to open Naver blog search for that brand -->'
     return h
 
 print("Generating HTML...")
