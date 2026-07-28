@@ -1,7 +1,7 @@
 import urllib.request, json, ssl, re, time as tm
 from collections import defaultdict, Counter
 from datetime import datetime
-from html import unescape
+from html import escape, unescape
 
 ctx = ssl._create_unverified_context()
 brands = ['Jackery','EcoFlow','Bluetti','AnkerSolix']
@@ -33,7 +33,8 @@ def fetch(keyword):
                     seen.add(u)
                     ts = p.get("addDate", 0) / 1000
                     if start <= ts <= now:
-                        posts.append({"date": datetime.fromtimestamp(ts).strftime('%Y-%m-%d'), "author": unescape(p.get("blogName", p.get("nickName", ""))), "title": unescape(re.sub(r'<[^>]+>', '', p.get("title", ""))).strip(), "content": unescape(re.sub(r'<[^>]+>', '', p.get("contents", ""))).strip(), "url": u})
+                        author_id = str(p.get("domainIdOrBlogId") or p.get("blogId") or "").strip()
+                        posts.append({"date": datetime.fromtimestamp(ts).strftime('%Y-%m-%d'), "author": unescape(p.get("blogName", p.get("nickName", ""))), "authorId": author_id, "title": unescape(re.sub(r'<[^>]+>', '', p.get("title", ""))).strip(), "content": unescape(re.sub(r'<[^>]+>', '', p.get("contents", ""))).strip(), "url": u})
             print(f"  {keyword} p{page}: +{len(posts)}")
             if page_dates and max(page_dates) < start: break
             tm.sleep(0.15)
@@ -58,24 +59,44 @@ for b in brands:
         if d and len(d)>=7: m[d[:7]] += 1
     monthly[b] = [m.get(k,0) for k in all_months]
 
-ua = {}
-for b in brands:
-    u = set()
-    for r in data[b]:
-        if r['author']: u.add(r['author'])
-    ua[b] = len(u)
-
-ap = {}
-for b in brands:
-    for r in data[b]:
-        if r['author']: ap[r['author']] = ap.get(r['author'],0) + 1
-top12 = sorted(ap, key=ap.get, reverse=True)[:12]
-td = {}
-for b in brands:
-    c = Counter()
-    for r in data[b]:
-        if r['author']: c[r['author']] += 1
-    td[b] = [c.get(t,0) for t in top12]
+blogger_analysis_months = ['2026-05', '2026-06']
+blogger_analysis = {}
+for month in blogger_analysis_months:
+    counts = defaultdict(Counter)
+    profiles = {}
+    for brand in brands[:2]:
+        for post in data[brand]:
+            if post['date'][:7] != month:
+                continue
+            author_id = post.get('authorId') or post['author']
+            author_key = author_id.casefold()
+            counts[author_key][brand] += 1
+            profiles.setdefault(author_key, {
+                'author': post['author'],
+                'authorId': post.get('authorId') or ''
+            })
+    rows = []
+    for author_key, brand_counts in counts.items():
+        jackery_count = brand_counts['Jackery']
+        ecoflow_count = brand_counts['EcoFlow']
+        if jackery_count and ecoflow_count:
+            kind = 'common'
+        elif jackery_count:
+            kind = 'jackery'
+        else:
+            kind = 'ecoflow'
+        profile = profiles[author_key]
+        rows.append({
+            'month': month,
+            'kind': kind,
+            'author': profile['author'],
+            'authorId': profile['authorId'],
+            'jackery': jackery_count,
+            'ecoflow': ecoflow_count
+        })
+    kind_order = {'common': 0, 'jackery': 1, 'ecoflow': 2}
+    rows.sort(key=lambda row: (kind_order[row['kind']], -(row['jackery'] + row['ecoflow']), row['author'].casefold(), row['authorId'].casefold()))
+    blogger_analysis[month] = rows
 
 pc = [('ac',['에어컨','air conditioner','냉방','wave 2','portable ac','무시동 에어컨']),('fridge',['냉장고','쿨러','refrigerator','fridge','cooler','캠핑 냉장고']),('solar',['태양광','태양열','솔라패널','solar panel','태양광 패널','solar generator','solar saga']),('power',['파워뱅크','파워스테이션','power bank','보조배터리','power station','인산철','비상전력','배터리','발전기','generator','전력','대용량','정전','휴대용 전원','explorer','delta','river','power ar','에코플로우','ecoflow','델타','리버','잭커리','jackery','블루에티','bluetti','anker','텐트','캠핑용품','차박용품','캠핑 장비','캠핑 의자','캠핑 테이블','침낭','매트','웨건','핸드트럭','camping gear']),('accessory',['케이블','커넥터','가방','케이스','시거잭','전용 가방','cable','case','bag','커버','파우치','폴딩카트','카트','드론','drone','매빅','mavic','예초기'])]
 pk = ['power','ac','fridge','solar','accessory','other']
@@ -181,6 +202,7 @@ for b in brands:
         classified_posts.append({
             'date': r['date'],
             'author': r['author'],
+            'authorId': r.get('authorId', ''),
             'title': r['title'],
             'url': r['url'],
             'product': classify_product(r['title']),
@@ -201,21 +223,47 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
     prod_labels = {"power":"야외 전원/파워뱅크","ac":"에어컨","fridge":"냉장고/쿨러","solar":"태양광/솔라패널","accessory":"액세서리/편의용품","other":"기타"} if lang=="kr" else {"power":"户外电源/电池","ac":"空调","fridge":"冰箱/冷柜","solar":"太阳能/光伏板","accessory":"配件/周边","other":"其他"}
     topic_labels = {"review":"제품 리뷰","guide":"제품 소개/가이드","outdoor":"캠핑/낚시","home":"가정/일상 전력","professional":"상업/전문 활용","promotion":"프로모션/홍보","solar_env":"태양광/친환경","exhibition":"전시회","emergency":"비상/재난 대비","accessory_service":"액세서리/수리","industry":"산업/기술 정보","unrelated":"동명/비관련","other":"기타"} if lang=="kr" else {"review":"产品测评","guide":"产品介绍/使用指南","outdoor":"露营/钓鱼","home":"家庭/日常用电","professional":"商业/专业应用","promotion":"促销/推广","solar_env":"太阳能/环保","exhibition":"展会","emergency":"应急备灾","accessory_service":"配件/维修","industry":"行业/技术资讯","unrelated":"同名/无关内容","other":"其他"}
     detail_ui = {"close":"닫기","date":"날짜","author":"블로그","post":"게시물 제목","untitled":"제목 없음","empty":"일치하는 데이터 소스가 없습니다.","postUnit":"개 게시물","bloggerUnit":"명 고유 블로거","all":"전체 게시물","monthly":"월 게시물","unique":"고유 블로거 연관 데이터","blogger":"블로거","product":"제품 카테고리","topic":"콘텐츠 주제"} if lang=="kr" else {"close":"关闭","date":"日期","author":"博主","post":"帖子标题","untitled":"无标题","empty":"没有匹配的数据源。","postUnit":"篇帖子","bloggerUnit":"位独立博主","all":"全部帖子","monthly":"月度帖子","unique":"独立博主关联数据","blogger":"博主","product":"产品类别","topic":"内容主题"}
+    analysis_ui = {
+        "common": "공통 발행인" if lang=="kr" else "共同发帖人",
+        "jackery": "Jackery 단독" if lang=="kr" else "仅Jackery",
+        "ecoflow": "EcoFlow 단독" if lang=="kr" else "仅EcoFlow",
+        "type": "유형" if lang=="kr" else "类型",
+        "author": "블로거" if lang=="kr" else "Blogger",
+        "authorId": "블로거 ID" if lang=="kr" else "Blogger ID",
+        "jackeryPosts": "Jackery 게시 수" if lang=="kr" else "Jackery发帖数",
+        "ecoflowPosts": "EcoFlow 게시 수" if lang=="kr" else "EcoFlow发帖数",
+        "sourceTitle": "데이터 소스 보기" if lang=="kr" else "查看对应数据源",
+        "month": "Blogger 분석" if lang=="kr" else "Blogger 分析",
+    }
     topic_axis = "콘텐츠 주제" if lang=="kr" else "内容主题"
     topic_share_axis = "브랜드 게시물 내 비중 (%)" if lang=="kr" else "品牌帖子占比（%）"
     topic_post_unit = "건" if lang=="kr" else "篇"
     c1 = j({"labels":all_months,"datasets":[{"label":brands[i],"data":monthly[brands[i]],"borderColor":colors[i],"backgroundColor":colors[i]+"30","fill":True,"tension":0.3,"pointRadius":3,"pointHitRadius":12} for i in range(4)]})
-    c2 = j({"labels":[brands[0],brands[1],brands[2],brands[3]],"datasets":[{"label":bt,"data":[ua[b] for b in brands],"backgroundColor":colors}]})
-    topL = [n[:12]+".." if len(n)>12 else n for n in top12]
-    c3 = j({"labels":topL,"datasets":[{"label":brands[i],"data":td[brands[i]],"backgroundColor":colors[i]} for i in range(4)]})
     c4 = j({"labels":[prod_labels[k] for k in pk],"datasets":[{"label":brands[i],"data":pd[brands[i]],"backgroundColor":colors[i]} for i in range(4)]})
     c5 = j({"labels":[topic_labels[k] for k in topic_keys],"datasets":[{"label":brands[i],"data":topic_percent_data[brands[i]],"postCounts":topic_data[brands[i]],"backgroundColor":colors[i]} for i in range(4)]})
     o1 = j({"responsive":True,"maintainAspectRatio":False,"plugins":{"legend":{"position":"top"}},"scales":{"x":{"title":{"display":True,"text":ml}},"y":{"beginAtZero":True,"title":{"display":True,"text":pl}}}})
-    o2 = j({"responsive":True,"maintainAspectRatio":False,"plugins":{"legend":{"display":False}},"scales":{"y":{"beginAtZero":True,"title":{"display":True,"text":bt}}}})
-    o3 = j({"responsive":True,"maintainAspectRatio":False,"indexAxis":"y","plugins":{"legend":{"position":"top"}},"scales":{"x":{"stacked":False,"title":{"display":True,"text":pl}},"y":{"title":{"display":True,"text":"Blogger"}}}})
     o4 = j({"responsive":True,"maintainAspectRatio":False,"plugins":{"legend":{"position":"top"}},"scales":{"x":{"title":{"display":True,"text":"Product"}},"y":{"beginAtZero":True,"title":{"display":True,"text":pl}}}})
     o5 = j({"responsive":True,"maintainAspectRatio":False,"plugins":{"legend":{"position":"top"}},"scales":{"x":{"title":{"display":True,"text":topic_axis},"ticks":{"autoSkip":False,"maxRotation":30,"minRotation":0}},"y":{"beginAtZero":True,"title":{"display":True,"text":topic_share_axis},"ticks":{"callback":"__PERCENT_TICK__"}}}})
     o5 = o5.replace('"__PERCENT_TICK__"', "function(value){return value+'%';}")
+
+    def render_analysis_table(month):
+        rows = blogger_analysis.get(month, [])
+        month_text = month[0:4] + ("년 " if lang=="kr" else "年") + str(int(month[5:7])) + ("월" if lang=="kr" else "月")
+        html = '<section class="card blogger-analysis-card"><h2>' + escape(month_text + ' ' + analysis_ui['month']) + '</h2><div class="blogger-table-wrap"><table class="blogger-table"><thead><tr><th>' + analysis_ui['type'] + '</th><th>' + analysis_ui['author'] + '</th><th>' + analysis_ui['authorId'] + '</th><th>' + analysis_ui['jackeryPosts'] + '</th><th>' + analysis_ui['ecoflowPosts'] + '</th></tr></thead><tbody>'
+        for row in rows:
+            type_label = analysis_ui[row['kind']]
+            html += '<tr><td>' + escape(type_label) + '</td><td>' + escape(row['author'] or '-') + '</td><td class="blogger-id">' + escape(row['authorId'] or '-') + '</td>'
+            for brand, key in (("Jackery", "jackery"), ("EcoFlow", "ecoflow")):
+                count = row[key]
+                if count:
+                    aria = analysis_ui['sourceTitle'] + ' · ' + brand + ' · ' + month_text + ' · ' + (row['author'] or row['authorId'])
+                    html += '<td class="post-count"><button type="button" class="blogger-count" data-brand="' + escape(brand, quote=True) + '" data-month="' + escape(month, quote=True) + '" data-author-id="' + escape(row['authorId'] or row['author'], quote=True) + '" data-author="' + escape(row['author'] or '-', quote=True) + '" aria-label="' + escape(aria, quote=True) + '" title="' + escape(analysis_ui['sourceTitle'], quote=True) + '">' + str(count) + '</button></td>'
+                else:
+                    html += '<td class="post-count muted">-</td>'
+            html += '</tr>'
+        if not rows:
+            html += '<tr><td colspan="5" class="source-empty">' + escape(detail_ui['empty']) + '</td></tr>'
+        return html + '</tbody></table></div></section>'
 
     totals = [sum(monthly[b]) for b in brands]
     mx = max(totals)
@@ -224,21 +272,20 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
 
     h = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>' + title + '</title>'
     h += '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>'
-    h += '<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f6f8;padding:30px;color:#333}body.modal-open{overflow:hidden}h1{font-size:24px;margin-bottom:8px}.sub{color:#888;font-size:14px;margin-bottom:30px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}.card{background:white;border-radius:8px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.06);margin-bottom:24px;overflow:hidden}.card h2{font-size:16px;font-weight:600;margin-bottom:16px}.chart-box{height:350px;position:relative}.chart-box.tall{height:450px}.chart-scroll{overflow-x:auto;padding-bottom:8px}.chart-box.topic{height:500px;min-width:1320px}.stat{appearance:none;border:0;width:100%;font:inherit;color:inherit;background:white;border-radius:8px;padding:20px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.06);cursor:pointer;transition:box-shadow .15s ease,transform .15s ease}.stat:hover{box-shadow:0 4px 12px rgba(0,0,0,0.1);transform:translateY(-1px)}.stat:focus-visible,.source-close:focus-visible,.post-link:focus-visible{outline:3px solid #1f6feb;outline-offset:2px}.stat .n{font-size:32px;font-weight:700}.stat .l{font-size:12px;color:#888;margin-top:4px}.two-cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}.source-modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(20,24,28,.58)}.source-modal[hidden]{display:none}.source-dialog{width:min(1100px,100%);max-height:calc(100vh - 40px);display:flex;flex-direction:column;background:#fff;border-radius:8px;box-shadow:0 16px 48px rgba(0,0,0,.25);overflow:hidden}.source-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px 22px;border-bottom:1px solid #e5e7eb}.source-head h2{font-size:18px;line-height:1.4}.source-meta{color:#667085;font-size:13px;margin-top:5px}.source-close{appearance:none;border:0;background:transparent;width:36px;height:36px;flex:0 0 36px;font-size:28px;line-height:1;color:#667085;cursor:pointer}.source-table-wrap{overflow:auto}.source-table{width:100%;min-width:720px;border-collapse:collapse}.source-table th,.source-table td{padding:12px 16px;text-align:left;border-bottom:1px solid #eef0f2;font-size:13px;line-height:1.5}.source-table th{position:sticky;top:0;z-index:1;background:#f8f9fb;color:#475467;font-weight:600}.source-table th:first-child,.source-table td:first-child{width:110px;white-space:nowrap}.source-table th:nth-child(2),.source-table td:nth-child(2){width:190px}.post-link{color:#0969da;text-decoration:none}.post-link:hover{text-decoration:underline}.source-empty{text-align:center!important;color:#667085;padding:36px!important}@media(max-width:900px){body{padding:16px}.grid{grid-template-columns:1fr 1fr}.two-cols{grid-template-columns:1fr}.card{padding:18px}.source-modal{padding:10px}.source-dialog{max-height:calc(100vh - 20px)}.source-head{padding:16px}.source-head h2{font-size:16px}}</style></head><body>'
+    h += '<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f6f8;padding:30px;color:#333}body.modal-open{overflow:hidden}h1{font-size:24px;margin-bottom:8px}.sub{color:#888;font-size:14px;margin-bottom:30px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}.card{background:white;border-radius:8px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.06);margin-bottom:24px;overflow:hidden}.card h2{font-size:16px;font-weight:600;margin-bottom:16px}.chart-box{height:350px;position:relative}.chart-box.tall{height:450px}.chart-scroll{overflow-x:auto;padding-bottom:8px}.chart-box.topic{height:500px;min-width:1320px}.stat{appearance:none;border:0;width:100%;font:inherit;color:inherit;background:white;border-radius:8px;padding:20px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.06);cursor:pointer;transition:box-shadow .15s ease,transform .15s ease}.stat:hover{box-shadow:0 4px 12px rgba(0,0,0,0.1);transform:translateY(-1px)}.stat:focus-visible,.source-close:focus-visible,.post-link:focus-visible,.blogger-count:focus-visible{outline:3px solid #1f6feb;outline-offset:2px}.stat .n{font-size:32px;font-weight:700}.stat .l{font-size:12px;color:#888;margin-top:4px}.two-cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}.blogger-table-wrap{max-height:460px;overflow:auto}.blogger-table{width:100%;min-width:680px;border-collapse:collapse}.blogger-table th,.blogger-table td{padding:8px 10px;text-align:left;border-bottom:1px solid #eef0f2;font-size:12px;line-height:1.35}.blogger-table th{position:sticky;top:0;z-index:1;background:#f8f9fb;color:#475467;font-weight:600;white-space:nowrap}.blogger-table td:first-child{white-space:nowrap}.blogger-table .blogger-id{color:#667085;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}.blogger-table .post-count{text-align:center;white-space:nowrap}.blogger-table .muted{color:#98a2b3}.blogger-count{appearance:none;border:0;background:transparent;color:#0969da;font:inherit;font-weight:700;cursor:pointer;padding:4px 7px;border-radius:4px}.blogger-count:hover{background:#eaf2ff;text-decoration:underline}.source-modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(20,24,28,.58)}.source-modal[hidden]{display:none}.source-dialog{width:min(1100px,100%);max-height:calc(100vh - 40px);display:flex;flex-direction:column;background:#fff;border-radius:8px;box-shadow:0 16px 48px rgba(0,0,0,.25);overflow:hidden}.source-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px 22px;border-bottom:1px solid #e5e7eb}.source-head h2{font-size:18px;line-height:1.4}.source-meta{color:#667085;font-size:13px;margin-top:5px}.source-close{appearance:none;border:0;background:transparent;width:36px;height:36px;flex:0 0 36px;font-size:28px;line-height:1;color:#667085;cursor:pointer}.source-table-wrap{overflow:auto}.source-table{width:100%;min-width:720px;border-collapse:collapse}.source-table th,.source-table td{padding:12px 16px;text-align:left;border-bottom:1px solid #eef0f2;font-size:13px;line-height:1.5}.source-table th{position:sticky;top:0;z-index:1;background:#f8f9fb;color:#475467;font-weight:600}.source-table th:first-child,.source-table td:first-child{width:110px;white-space:nowrap}.source-table th:nth-child(2),.source-table td:nth-child(2){width:190px}.post-link{color:#0969da;text-decoration:none}.post-link:hover{text-decoration:underline}.source-empty{text-align:center!important;color:#667085;padding:36px!important}@media(max-width:900px){body{padding:16px}.grid{grid-template-columns:1fr 1fr}.two-cols{grid-template-columns:1fr}.card{padding:18px}.source-modal{padding:10px}.source-dialog{max-height:calc(100vh - 20px)}.source-head{padding:16px}.source-head h2{font-size:16px}}</style></head><body>'
     h += '<h1>' + title + '</h1><p class="sub">' + sub + '</p><div class="grid">'
     for i,b in enumerate(brands):
         pct = round(totals[i]/mx*100)
         h += '<button type="button" class="stat" data-brand="' + b + '" aria-label="' + b + ' ' + detail_ui['all'] + '"><div class="n" style="color:' + colors[i] + '">' + str(totals[i]) + '</div><div class="l">' + b + '</div><div style="height:4px;border-radius:2px;background:' + colors[i] + ';width:' + str(pct) + '%;margin:8px auto 0"></div></button>'
     h += '</div>'
     h += '<div class="card"><h2>' + l1 + '</h2><div class="chart-box"><canvas id="c1"></canvas></div></div>'
-    h += '<div class="two-cols"><div class="card"><h2>' + l2 + '</h2><div class="chart-box"><canvas id="c2"></canvas></div></div><div class="card"><h2>' + l3 + '</h2><div class="chart-box tall"><canvas id="c3"></canvas></div></div></div>'
+    h += '<div class="two-cols">' + render_analysis_table(blogger_analysis_months[0]) + render_analysis_table(blogger_analysis_months[1]) + '</div>'
     h += '<div class="card"><h2>' + l4 + '</h2><div class="chart-box tall"><canvas id="c4"></canvas></div></div>'
     h += '<div class="card"><h2>' + l5 + '</h2><div class="chart-scroll"><div class="chart-box topic"><canvas id="c5"></canvas></div></div></div>'
     h += '<div class="source-modal" id="sourceModal" hidden><section class="source-dialog" role="dialog" aria-modal="true" aria-labelledby="sourceTitle"><header class="source-head"><div><h2 id="sourceTitle"></h2><p class="source-meta" id="sourceMeta" aria-live="polite"></p></div><button type="button" class="source-close" id="sourceClose" aria-label="' + detail_ui['close'] + '" title="' + detail_ui['close'] + '">&#215;</button></header><div class="source-table-wrap"><table class="source-table"><thead><tr><th>' + detail_ui['date'] + '</th><th>' + detail_ui['author'] + '</th><th>' + detail_ui['post'] + '</th></tr></thead><tbody id="sourceBody"></tbody></table></div></section></div>'
     click_js = (
         "const dashboardPosts=" + j(drilldown_posts) + ";"
         "const dashboardMonths=" + j(all_months) + ";"
-        "const dashboardAuthors=" + j(top12) + ";"
         "const dashboardProductKeys=" + j(pk) + ";"
         "const dashboardTopicKeys=" + j(topic_keys) + ";"
         "const detailUi=" + j(detail_ui) + ";"
@@ -253,6 +300,7 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
         "const posts=dashboardPosts[brand]||[];"
         "if(kind==='month')return posts.filter(function(post){return post.date.slice(0,7)===value;});"
         "if(kind==='author')return posts.filter(function(post){return post.author===value;});"
+        "if(kind==='bloggerMonth')return posts.filter(function(post){return post.date.slice(0,7)===value.month&&String(post.authorId||post.author||'').toLowerCase()===String(value.authorId||'').toLowerCase();});"
         "if(kind==='product')return posts.filter(function(post){return post.product===value;});"
         "if(kind==='topic')return posts.filter(function(post){return post.topic===value;});"
         "return posts.slice();"
@@ -261,6 +309,7 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
         "if(kind==='month')return brand+' · '+value+' '+detailUi.monthly;"
         "if(kind==='unique')return brand+' · '+detailUi.unique;"
         "if(kind==='author')return brand+' · '+detailUi.blogger+': '+label;"
+        "if(kind==='bloggerMonth')return brand+' · '+value.month+' '+detailUi.monthly+' · '+detailUi.blogger+': '+label;"
         "if(kind==='product')return brand+' · '+detailUi.product+': '+label;"
         "if(kind==='topic')return brand+' · '+detailUi.topic+': '+label;"
         "return brand+' · '+detailUi.all;"
@@ -293,8 +342,6 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
         "const chartId=chart.canvas.id;const index=element.index;"
         "let brand=dataset.label;let kind='all';let value='';let label='';let metricCount=null;"
         "if(chartId==='c1'){kind='month';value=dashboardMonths[index];label=value;}"
-        "else if(chartId==='c2'){brand=chart.data.labels[index];kind='unique';metricCount=dataset.data[index];}"
-        "else if(chartId==='c3'){kind='author';value=dashboardAuthors[index];label=value;}"
         "else if(chartId==='c4'){kind='product';value=dashboardProductKeys[index];label=chart.data.labels[index];}"
         "else if(chartId==='c5'){kind='topic';value=dashboardTopicKeys[index];label=chart.data.labels[index];}"
         "showSources(brand,kind,value,label,metricCount);"
@@ -302,10 +349,11 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
         "function setChartCursor(event,activeElements,chart){"
         "chart.canvas.style.cursor=activeElements.length?'pointer':'default';"
         "}"
-        "['c1','c2','c3','c4','c5'].forEach(function(id){"
+        "['c1','c4','c5'].forEach(function(id){"
         "const chart=Chart.getChart(id);"
         "if(chart){chart.options.onClick=openChartSources;chart.options.onHover=setChartCursor;chart.update();}"
         "});"
+        "document.querySelectorAll('.blogger-count[data-brand]').forEach(function(button){button.addEventListener('click',function(){showSources(button.dataset.brand,'bloggerMonth',{month:button.dataset.month,authorId:button.dataset.authorId},button.dataset.author,null);});});"
         "document.querySelectorAll('.stat[data-brand]').forEach(function(button){button.addEventListener('click',function(){showSources(button.dataset.brand,'all','','',null);});});"
         "sourceClose.addEventListener('click',closeSources);"
         "sourceModal.addEventListener('click',function(event){if(event.target===sourceModal&&Date.now()-sourceOpenedAt>250)closeSources();});"
@@ -313,8 +361,6 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
     )
     h += '<script>'
     h += 'new Chart("c1",{type:"line",data:' + c1 + ',options:' + o1 + '});'
-    h += 'new Chart("c2",{type:"bar",data:' + c2 + ',options:' + o2 + '});'
-    h += 'new Chart("c3",{type:"bar",data:' + c3 + ',options:' + o3 + '});'
     h += 'new Chart("c4",{type:"bar",data:' + c4 + ',options:' + o4 + '});'
     h += 'const topicChart=new Chart("c5",{type:"bar",data:' + c5 + ',options:' + o5 + '});'
     h += 'topicChart.options.plugins.tooltip.callbacks={label:function(context){const count=context.dataset.postCounts[context.dataIndex];return context.dataset.label+": "+context.parsed.y.toFixed(1)+"% ("+count+" ' + topic_post_unit + ')";}};topicChart.update();'
@@ -329,8 +375,8 @@ print("Generating HTML...")
 kr_sub = '기간: 2025.07.20 ~ ' + TODAY_STR + ' | 출처: section.blog.naver.com'
 cn_sub = '期间: 2025.07.20 ~ ' + TODAY_STR + ' | 数据来源: section.blog.naver.com'
 
-kr = gen('4대 파워뱅크 브랜드 Naver Blog 비교 분석', kr_sub, '1. 게시 시계열 분석 (월별 포스팅 수)', '2. 고유 포스팅 기여자 수', '3. Top 활성 블로그', '4. 제품 카테고리 분포', '5. 콘텐츠 주제 분포 (브랜드별 비중)', '월', '게시물 수', '기여자 수', 'kr')
-cn = gen('4大户外电源品牌 Naver Blog 对比分析', cn_sub, '1. 发帖时间趋势 (月度帖子数)', '2. 独立博主数量', '3. Top 活跃博主', '4. 产品类别分布', '5. 内容主题分布（各品牌占比）', '月份', '帖子数', '博主数', 'cn')
+kr = gen('4대 파워뱅크 브랜드 Naver Blog 비교 분석', kr_sub, '1. 게시 시계열 분석 (월별 포스팅 수)', '2. 2026년 5월 Blogger 분석', '3. 2026년 6월 Blogger 분석', '4. 제품 카테고리 분포', '5. 콘텐츠 주제 분포 (브랜드별 비중)', '월', '게시물 수', '기여자 수', 'kr')
+cn = gen('4大户外电源品牌 Naver Blog 对比分析', cn_sub, '1. 发帖时间趋势 (月度帖子数)', '2. 2026年5月 Blogger分析', '3. 2026年6月 Blogger分析', '4. 产品类别分布', '5. 内容主题分布（各品牌占比）', '月份', '帖子数', '博主数', 'cn')
 
 with open('brand_comparison_dashboard.html','w',encoding='utf-8') as f: f.write(kr)
 with open('brand_comparison_dashboard_cn.html','w',encoding='utf-8') as f: f.write(cn)
