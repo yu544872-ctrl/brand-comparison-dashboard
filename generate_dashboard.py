@@ -1,12 +1,12 @@
 import urllib.request, json, ssl, re, time as tm
 from collections import defaultdict, Counter
 from datetime import datetime
+from html import unescape
 
 ctx = ssl._create_unverified_context()
 brands = ['Jackery','EcoFlow','Bluetti','AnkerSolix']
 colors = ['#FF6B35','#004472','#00A86B','#E84393']
 keywords = {'Jackery': 'jackery', 'EcoFlow': 'ecoflow', 'Bluetti': 'bluetti', 'AnkerSolix': 'anker%20solix'}
-search_urls = {'Jackery': 'https://section.blog.naver.com/Search/Post.naver?keyword=jackery&orderBy=recentdate&rangeType=ALL', 'EcoFlow': 'https://section.blog.naver.com/Search/Post.naver?keyword=ecoflow&orderBy=recentdate&rangeType=ALL', 'Bluetti': 'https://section.blog.naver.com/Search/Post.naver?keyword=bluetti&orderBy=recentdate&rangeType=ALL', 'AnkerSolix': 'https://section.blog.naver.com/Search/Post.naver?keyword=anker+solix&orderBy=recentdate&rangeType=ALL'}
 
 NOW = datetime.now()
 TODAY_STR = NOW.strftime('%Y.%m.%d')
@@ -33,7 +33,7 @@ def fetch(keyword):
                     seen.add(u)
                     ts = p.get("addDate", 0) / 1000
                     if start <= ts <= now:
-                        posts.append({"date": datetime.fromtimestamp(ts).strftime('%Y-%m-%d'), "author": p.get("blogName", p.get("nickName", "")), "title": re.sub(r'<[^>]+>', '', p.get("title", "")).strip(), "content": re.sub(r'<[^>]+>', '', p.get("contents", "")).strip(), "url": u})
+                        posts.append({"date": datetime.fromtimestamp(ts).strftime('%Y-%m-%d'), "author": unescape(p.get("blogName", p.get("nickName", ""))), "title": unescape(re.sub(r'<[^>]+>', '', p.get("title", ""))).strip(), "content": unescape(re.sub(r'<[^>]+>', '', p.get("contents", ""))).strip(), "url": u})
             print(f"  {keyword} p{page}: +{len(posts)}")
             if page_dates and max(page_dates) < start: break
             tm.sleep(0.15)
@@ -79,16 +79,17 @@ for b in brands:
 
 pc = [('ac',['에어컨','air conditioner','냉방','wave 2','portable ac','무시동 에어컨']),('fridge',['냉장고','쿨러','refrigerator','fridge','cooler','캠핑 냉장고']),('solar',['태양광','태양열','솔라패널','solar panel','태양광 패널','solar generator','solar saga']),('power',['파워뱅크','파워스테이션','power bank','보조배터리','power station','인산철','비상전력','배터리','발전기','generator','전력','대용량','정전','휴대용 전원','explorer','delta','river','power ar','에코플로우','ecoflow','델타','리버','잭커리','jackery','블루에티','bluetti','anker','텐트','캠핑용품','차박용품','캠핑 장비','캠핑 의자','캠핑 테이블','침낭','매트','웨건','핸드트럭','camping gear']),('accessory',['케이블','커넥터','가방','케이스','시거잭','전용 가방','cable','case','bag','커버','파우치','폴딩카트','카트','드론','drone','매빅','mavic','예초기'])]
 pk = ['power','ac','fridge','solar','accessory','other']
+
+def classify_product(title):
+    title_text = title.lower()
+    for category, category_keywords in pc:
+        if any(keyword.lower() in title_text for keyword in category_keywords):
+            return category
+    return 'other'
+
 pd = {}
 for b in brands:
-    c = defaultdict(int)
-    for r in data[b]:
-        tl = r['title'].lower(); cat = 'other'
-        for kk,ww in pc:
-            for w in ww:
-                if w.lower() in tl: cat = kk; break
-            if cat != 'other': break
-        c[cat] += 1
+    c = Counter(classify_product(r['title']) for r in data[b])
     pd[b] = [c.get(k,0) for k in pk]
 
 topic_keys = ['review','guide','outdoor','home','professional','promotion','solar_env','exhibition','emergency','accessory_service','industry','unrelated','other']
@@ -170,8 +171,22 @@ def classify_topic(brand, title, content):
 topic_counts = {}
 topic_data = {}
 topic_percent_data = {}
+drilldown_posts = {}
 for b in brands:
-    counts = Counter(classify_topic(b, r['title'], r['content']) for r in data[b])
+    classified_posts = []
+    counts = Counter()
+    for r in data[b]:
+        topic = classify_topic(b, r['title'], r['content'])
+        counts[topic] += 1
+        classified_posts.append({
+            'date': r['date'],
+            'author': r['author'],
+            'title': r['title'],
+            'url': r['url'],
+            'product': classify_product(r['title']),
+            'topic': topic
+        })
+    drilldown_posts[b] = classified_posts
     topic_counts[b] = [counts.get(topic, 0) for topic in topic_keys]
     topic_data[b] = topic_counts[b]
     total = len(data[b])
@@ -180,15 +195,16 @@ for b in brands:
         raise RuntimeError('Topic classification total mismatch for ' + b)
     print('  ' + b + ' topic counts: ' + str(dict(zip(topic_keys, topic_counts[b]))))
 
-def j(o): return json.dumps(o, ensure_ascii=False)
+def j(o): return json.dumps(o, ensure_ascii=False).replace('</', '<\\/')
 
 def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
     prod_labels = {"power":"야외 전원/파워뱅크","ac":"에어컨","fridge":"냉장고/쿨러","solar":"태양광/솔라패널","accessory":"액세서리/편의용품","other":"기타"} if lang=="kr" else {"power":"户外电源/电池","ac":"空调","fridge":"冰箱/冷柜","solar":"太阳能/光伏板","accessory":"配件/周边","other":"其他"}
     topic_labels = {"review":"제품 리뷰","guide":"제품 소개/가이드","outdoor":"캠핑/낚시","home":"가정/일상 전력","professional":"상업/전문 활용","promotion":"프로모션/홍보","solar_env":"태양광/친환경","exhibition":"전시회","emergency":"비상/재난 대비","accessory_service":"액세서리/수리","industry":"산업/기술 정보","unrelated":"동명/비관련","other":"기타"} if lang=="kr" else {"review":"产品测评","guide":"产品介绍/使用指南","outdoor":"露营/钓鱼","home":"家庭/日常用电","professional":"商业/专业应用","promotion":"促销/推广","solar_env":"太阳能/环保","exhibition":"展会","emergency":"应急备灾","accessory_service":"配件/维修","industry":"行业/技术资讯","unrelated":"同名/无关内容","other":"其他"}
+    detail_ui = {"close":"닫기","date":"날짜","author":"블로그","post":"게시물 제목","untitled":"제목 없음","empty":"일치하는 데이터 소스가 없습니다.","postUnit":"개 게시물","bloggerUnit":"명 고유 블로거","all":"전체 게시물","monthly":"월 게시물","unique":"고유 블로거 연관 데이터","blogger":"블로거","product":"제품 카테고리","topic":"콘텐츠 주제"} if lang=="kr" else {"close":"关闭","date":"日期","author":"博主","post":"帖子标题","untitled":"无标题","empty":"没有匹配的数据源。","postUnit":"篇帖子","bloggerUnit":"位独立博主","all":"全部帖子","monthly":"月度帖子","unique":"独立博主关联数据","blogger":"博主","product":"产品类别","topic":"内容主题"}
     topic_axis = "콘텐츠 주제" if lang=="kr" else "内容主题"
     topic_share_axis = "브랜드 게시물 내 비중 (%)" if lang=="kr" else "品牌帖子占比（%）"
     topic_post_unit = "건" if lang=="kr" else "篇"
-    c1 = j({"labels":all_months,"datasets":[{"label":brands[i],"data":monthly[brands[i]],"borderColor":colors[i],"backgroundColor":colors[i]+"30","fill":True,"tension":0.3,"pointRadius":3} for i in range(4)]})
+    c1 = j({"labels":all_months,"datasets":[{"label":brands[i],"data":monthly[brands[i]],"borderColor":colors[i],"backgroundColor":colors[i]+"30","fill":True,"tension":0.3,"pointRadius":3,"pointHitRadius":12} for i in range(4)]})
     c2 = j({"labels":[brands[0],brands[1],brands[2],brands[3]],"datasets":[{"label":bt,"data":[ua[b] for b in brands],"backgroundColor":colors}]})
     topL = [n[:12]+".." if len(n)>12 else n for n in top12]
     c3 = j({"labels":topL,"datasets":[{"label":brands[i],"data":td[brands[i]],"backgroundColor":colors[i]} for i in range(4)]})
@@ -208,34 +224,92 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
 
     h = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>' + title + '</title>'
     h += '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>'
-    h += '<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f6f8;padding:30px;color:#333}h1{font-size:24px;margin-bottom:8px}.sub{color:#888;font-size:14px;margin-bottom:30px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}.card{background:white;border-radius:8px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.06);margin-bottom:24px;overflow:hidden}.card h2{font-size:16px;font-weight:600;margin-bottom:16px}.chart-box{height:350px;position:relative}.chart-box.tall{height:450px}.chart-scroll{overflow-x:auto;padding-bottom:8px}.chart-box.topic{height:500px;min-width:1320px}.stat{background:white;border-radius:8px;padding:20px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.06)}.stat .n{font-size:32px;font-weight:700}.stat .l{font-size:12px;color:#888;margin-top:4px}.two-cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}@media(max-width:900px){body{padding:16px}.grid{grid-template-columns:1fr 1fr}.two-cols{grid-template-columns:1fr}.card{padding:18px}}</style></head><body>'
+    h += '<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f6f8;padding:30px;color:#333}body.modal-open{overflow:hidden}h1{font-size:24px;margin-bottom:8px}.sub{color:#888;font-size:14px;margin-bottom:30px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}.card{background:white;border-radius:8px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.06);margin-bottom:24px;overflow:hidden}.card h2{font-size:16px;font-weight:600;margin-bottom:16px}.chart-box{height:350px;position:relative}.chart-box.tall{height:450px}.chart-scroll{overflow-x:auto;padding-bottom:8px}.chart-box.topic{height:500px;min-width:1320px}.stat{appearance:none;border:0;width:100%;font:inherit;color:inherit;background:white;border-radius:8px;padding:20px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.06);cursor:pointer;transition:box-shadow .15s ease,transform .15s ease}.stat:hover{box-shadow:0 4px 12px rgba(0,0,0,0.1);transform:translateY(-1px)}.stat:focus-visible,.source-close:focus-visible,.post-link:focus-visible{outline:3px solid #1f6feb;outline-offset:2px}.stat .n{font-size:32px;font-weight:700}.stat .l{font-size:12px;color:#888;margin-top:4px}.two-cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}.source-modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(20,24,28,.58)}.source-modal[hidden]{display:none}.source-dialog{width:min(1100px,100%);max-height:calc(100vh - 40px);display:flex;flex-direction:column;background:#fff;border-radius:8px;box-shadow:0 16px 48px rgba(0,0,0,.25);overflow:hidden}.source-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px 22px;border-bottom:1px solid #e5e7eb}.source-head h2{font-size:18px;line-height:1.4}.source-meta{color:#667085;font-size:13px;margin-top:5px}.source-close{appearance:none;border:0;background:transparent;width:36px;height:36px;flex:0 0 36px;font-size:28px;line-height:1;color:#667085;cursor:pointer}.source-table-wrap{overflow:auto}.source-table{width:100%;min-width:720px;border-collapse:collapse}.source-table th,.source-table td{padding:12px 16px;text-align:left;border-bottom:1px solid #eef0f2;font-size:13px;line-height:1.5}.source-table th{position:sticky;top:0;z-index:1;background:#f8f9fb;color:#475467;font-weight:600}.source-table th:first-child,.source-table td:first-child{width:110px;white-space:nowrap}.source-table th:nth-child(2),.source-table td:nth-child(2){width:190px}.post-link{color:#0969da;text-decoration:none}.post-link:hover{text-decoration:underline}.source-empty{text-align:center!important;color:#667085;padding:36px!important}@media(max-width:900px){body{padding:16px}.grid{grid-template-columns:1fr 1fr}.two-cols{grid-template-columns:1fr}.card{padding:18px}.source-modal{padding:10px}.source-dialog{max-height:calc(100vh - 20px)}.source-head{padding:16px}.source-head h2{font-size:16px}}</style></head><body>'
     h += '<h1>' + title + '</h1><p class="sub">' + sub + '</p><div class="grid">'
     for i,b in enumerate(brands):
         pct = round(totals[i]/mx*100)
-        h += '<div class="stat"><a href="' + search_urls[b] + '" target="_blank" style="text-decoration:none"><div class="n" style="color:' + colors[i] + '">' + str(totals[i]) + '</div></a><div class="l">' + b + '</div><div style="height:4px;border-radius:2px;background:' + colors[i] + ';width:' + str(pct) + '%;margin:8px auto 0"></div></div>'
+        h += '<button type="button" class="stat" data-brand="' + b + '" aria-label="' + b + ' ' + detail_ui['all'] + '"><div class="n" style="color:' + colors[i] + '">' + str(totals[i]) + '</div><div class="l">' + b + '</div><div style="height:4px;border-radius:2px;background:' + colors[i] + ';width:' + str(pct) + '%;margin:8px auto 0"></div></button>'
     h += '</div>'
     h += '<div class="card"><h2>' + l1 + '</h2><div class="chart-box"><canvas id="c1"></canvas></div></div>'
     h += '<div class="two-cols"><div class="card"><h2>' + l2 + '</h2><div class="chart-box"><canvas id="c2"></canvas></div></div><div class="card"><h2>' + l3 + '</h2><div class="chart-box tall"><canvas id="c3"></canvas></div></div></div>'
     h += '<div class="card"><h2>' + l4 + '</h2><div class="chart-box tall"><canvas id="c4"></canvas></div></div>'
     h += '<div class="card"><h2>' + l5 + '</h2><div class="chart-scroll"><div class="chart-box topic"><canvas id="c5"></canvas></div></div></div>'
+    h += '<div class="source-modal" id="sourceModal" hidden><section class="source-dialog" role="dialog" aria-modal="true" aria-labelledby="sourceTitle"><header class="source-head"><div><h2 id="sourceTitle"></h2><p class="source-meta" id="sourceMeta" aria-live="polite"></p></div><button type="button" class="source-close" id="sourceClose" aria-label="' + detail_ui['close'] + '" title="' + detail_ui['close'] + '">&#215;</button></header><div class="source-table-wrap"><table class="source-table"><thead><tr><th>' + detail_ui['date'] + '</th><th>' + detail_ui['author'] + '</th><th>' + detail_ui['post'] + '</th></tr></thead><tbody id="sourceBody"></tbody></table></div></section></div>'
     click_js = (
-        "const brandSearchUrls=" + j(search_urls) + ";"
-        "function openBrandSearch(event,activeElements,chart){"
-        "const elements=chart.getElementsAtEventForMode(event,'nearest',{intersect:true},true);"
+        "const dashboardPosts=" + j(drilldown_posts) + ";"
+        "const dashboardMonths=" + j(all_months) + ";"
+        "const dashboardAuthors=" + j(top12) + ";"
+        "const dashboardProductKeys=" + j(pk) + ";"
+        "const dashboardTopicKeys=" + j(topic_keys) + ";"
+        "const detailUi=" + j(detail_ui) + ";"
+        "const sourceModal=document.getElementById('sourceModal');"
+        "const sourceTitle=document.getElementById('sourceTitle');"
+        "const sourceMeta=document.getElementById('sourceMeta');"
+        "const sourceBody=document.getElementById('sourceBody');"
+        "const sourceClose=document.getElementById('sourceClose');"
+        "let lastSourceTrigger=null;"
+        "let sourceOpenedAt=0;"
+        "function matchingPosts(brand,kind,value){"
+        "const posts=dashboardPosts[brand]||[];"
+        "if(kind==='month')return posts.filter(function(post){return post.date.slice(0,7)===value;});"
+        "if(kind==='author')return posts.filter(function(post){return post.author===value;});"
+        "if(kind==='product')return posts.filter(function(post){return post.product===value;});"
+        "if(kind==='topic')return posts.filter(function(post){return post.topic===value;});"
+        "return posts.slice();"
+        "}"
+        "function detailTitle(brand,kind,value,label){"
+        "if(kind==='month')return brand+' · '+value+' '+detailUi.monthly;"
+        "if(kind==='unique')return brand+' · '+detailUi.unique;"
+        "if(kind==='author')return brand+' · '+detailUi.blogger+': '+label;"
+        "if(kind==='product')return brand+' · '+detailUi.product+': '+label;"
+        "if(kind==='topic')return brand+' · '+detailUi.topic+': '+label;"
+        "return brand+' · '+detailUi.all;"
+        "}"
+        "function showSources(brand,kind,value,label,metricCount){"
+        "const posts=matchingPosts(brand,kind,value).sort(function(a,b){return b.date.localeCompare(a.date)||a.title.localeCompare(b.title);});"
+        "const uniqueBloggers=new Set(posts.map(function(post){return post.author;}).filter(Boolean)).size;"
+        "lastSourceTrigger=document.activeElement;"
+        "sourceTitle.textContent=detailTitle(brand,kind,value,label);"
+        "sourceMeta.textContent=(kind==='unique'?metricCount+' '+detailUi.bloggerUnit+' · ':'')+posts.length+' '+detailUi.postUnit+(kind==='unique'?'':' · '+uniqueBloggers+' '+detailUi.bloggerUnit);"
+        "const fragment=document.createDocumentFragment();"
+        "if(!posts.length){const row=document.createElement('tr');const cell=document.createElement('td');cell.colSpan=3;cell.className='source-empty';cell.textContent=detailUi.empty;row.appendChild(cell);fragment.appendChild(row);}"
+        "posts.forEach(function(post){"
+        "const row=document.createElement('tr');"
+        "const dateCell=document.createElement('td');dateCell.textContent=post.date;"
+        "const authorCell=document.createElement('td');authorCell.textContent=post.author||'-';"
+        "const titleCell=document.createElement('td');const link=document.createElement('a');"
+        "link.className='post-link';link.textContent=post.title||detailUi.untitled;"
+        "if(/^https?:\\/\\//i.test(post.url)){link.href=post.url;link.target='_blank';link.rel='noopener noreferrer';}"
+        "titleCell.appendChild(link);row.append(dateCell,authorCell,titleCell);fragment.appendChild(row);"
+        "});"
+        "sourceBody.replaceChildren(fragment);sourceOpenedAt=Date.now();sourceModal.hidden=false;document.body.classList.add('modal-open');sourceClose.focus();"
+        "}"
+        "function closeSources(){sourceModal.hidden=true;document.body.classList.remove('modal-open');if(lastSourceTrigger&&typeof lastSourceTrigger.focus==='function')lastSourceTrigger.focus();}"
+        "function openChartSources(event,activeElements,chart){"
+        "const elements=activeElements&&activeElements.length?activeElements:chart.getElementsAtEventForMode(event,'nearest',{intersect:true},true);"
         "if(!elements.length)return;"
         "const element=elements[0];"
         "const dataset=chart.data.datasets[element.datasetIndex];"
-        "const brand=chart.canvas.id==='c2'?chart.data.labels[element.index]:dataset.label;"
-        "const url=brandSearchUrls[brand];"
-        "if(url)window.open(url,'_blank','noopener,noreferrer');"
+        "const chartId=chart.canvas.id;const index=element.index;"
+        "let brand=dataset.label;let kind='all';let value='';let label='';let metricCount=null;"
+        "if(chartId==='c1'){kind='month';value=dashboardMonths[index];label=value;}"
+        "else if(chartId==='c2'){brand=chart.data.labels[index];kind='unique';metricCount=dataset.data[index];}"
+        "else if(chartId==='c3'){kind='author';value=dashboardAuthors[index];label=value;}"
+        "else if(chartId==='c4'){kind='product';value=dashboardProductKeys[index];label=chart.data.labels[index];}"
+        "else if(chartId==='c5'){kind='topic';value=dashboardTopicKeys[index];label=chart.data.labels[index];}"
+        "showSources(brand,kind,value,label,metricCount);"
         "}"
         "function setChartCursor(event,activeElements,chart){"
         "chart.canvas.style.cursor=activeElements.length?'pointer':'default';"
         "}"
         "['c1','c2','c3','c4','c5'].forEach(function(id){"
         "const chart=Chart.getChart(id);"
-        "if(chart){chart.options.onClick=openBrandSearch;chart.options.onHover=setChartCursor;chart.update();}"
+        "if(chart){chart.options.onClick=openChartSources;chart.options.onHover=setChartCursor;chart.update();}"
         "});"
+        "document.querySelectorAll('.stat[data-brand]').forEach(function(button){button.addEventListener('click',function(){showSources(button.dataset.brand,'all','','',null);});});"
+        "sourceClose.addEventListener('click',closeSources);"
+        "sourceModal.addEventListener('click',function(event){if(event.target===sourceModal&&Date.now()-sourceOpenedAt>250)closeSources();});"
+        "document.addEventListener('keydown',function(event){if(event.key==='Escape'&&!sourceModal.hidden)closeSources();});"
     )
     h += '<script>'
     h += 'new Chart("c1",{type:"line",data:' + c1 + ',options:' + o1 + '});'
@@ -246,7 +320,7 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
     h += 'topicChart.options.plugins.tooltip.callbacks={label:function(context){const count=context.dataset.postCounts[context.dataIndex];return context.dataset.label+": "+context.parsed.y.toFixed(1)+"% ("+count+" ' + topic_post_unit + ')";}};topicChart.update();'
     h += click_js
     h += '</script>'
-    h += '<!-- Click any chart bar/point to open Naver blog search for that brand -->'
+    h += '<!-- Click any chart bar or point to inspect its matching source posts -->'
     h += '</body></html>'
 
     return h
