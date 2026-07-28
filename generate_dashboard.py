@@ -91,49 +91,19 @@ for b in brands:
         c[cat] += 1
     pd[b] = [c.get(k,0) for k in pk]
 
-topic_keys = ['review','outdoor','promotion','solar_env','exhibition','emergency','other']
-topic_priority = ['exhibition','promotion','review','emergency','solar_env','outdoor']
-topic_keywords = {
-    'review': ['리뷰','사용기','사용 후기','구매 후기','체험기','실사용','개봉기','언박싱','성능 테스트','비교 분석','장단점','추천','review','hands-on','unboxing','test'],
-    'outdoor': ['캠핑','차박','오토캠핑','백패킹','글램핑','캠핑카','카라반','낚시','피싱','야영','노지','camping','fishing','caravan','outdoor'],
-    'promotion': ['할인','특가','프로모션','이벤트','쿠폰','공동구매','체험단','서포터즈','협찬','광고','제공받아','증정','사은품','예약 판매','출시','신제품','promotion','discount','sale','coupon','event','sponsored'],
-    'solar_env': ['태양광','태양열','솔라','친환경','환경 보호','재생에너지','탄소중립','탄소 중립','에너지 전환','전력 자립','친환경 에너지','solar','renewable','eco-friendly','sustainability','esg'],
-    'exhibition': ['전시회','박람회','엑스포','캠핑페어','캠핑 페어','모터쇼','전시 부스','expo','exhibition','trade show','ces 202','ifa 202'],
-    'emergency': ['재난','비상','정전','방재','대피','생존','비상전력','비상 전력','비상용','재해','지진','태풍','폭우','홍수','산불','응급','긴급','재난 대비','비상 대비','blackout','emergency','disaster','survival','backup power']
-}
-
-def classify_topic(title, content):
-    title_text = title.lower()
-    content_text = content.lower()
-    scores = {}
-    for topic in topic_priority:
-        scores[topic] = sum(3 for keyword in topic_keywords[topic] if keyword in title_text)
-        scores[topic] += sum(1 for keyword in topic_keywords[topic] if keyword in content_text)
-    best_topic = max(topic_priority, key=lambda topic: scores[topic])
-    return best_topic if scores[best_topic] else 'other'
-
-topic_data = {}
-for b in brands:
-    counts = Counter(classify_topic(r['title'], r['content']) for r in data[b])
-    topic_data[b] = [counts.get(topic, 0) for topic in topic_keys]
-
 def j(o): return json.dumps(o, ensure_ascii=False)
 
-def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
+def gen(title, sub, l1, l2, l3, l4, ml, pl, bt, lang):
     prod_labels = {"power":"야외 전원/파워뱅크","ac":"에어컨","fridge":"냉장고/쿨러","solar":"태양광/솔라패널","accessory":"액세서리/편의용품","other":"기타"} if lang=="kr" else {"power":"户外电源/电池","ac":"空调","fridge":"冰箱/冷柜","solar":"太阳能/光伏板","accessory":"配件/周边","other":"其他"}
-    topic_labels = {"review":"제품 리뷰","outdoor":"캠핑/낚시","promotion":"프로모션/홍보","solar_env":"태양광/친환경","exhibition":"전시회","emergency":"비상/재난 대비","other":"기타"} if lang=="kr" else {"review":"产品测评","outdoor":"露营/钓鱼","promotion":"促销/推广","solar_env":"太阳能/环保","exhibition":"展会","emergency":"应急备灾","other":"其他"}
-    topic_axis = "콘텐츠 주제" if lang=="kr" else "内容主题"
     c1 = j({"labels":all_months,"datasets":[{"label":brands[i],"data":monthly[brands[i]],"borderColor":colors[i],"backgroundColor":colors[i]+"30","fill":True,"tension":0.3,"pointRadius":3} for i in range(4)]})
     c2 = j({"labels":[brands[0],brands[1],brands[2],brands[3]],"datasets":[{"label":bt,"data":[ua[b] for b in brands],"backgroundColor":colors}]})
     topL = [n[:12]+".." if len(n)>12 else n for n in top12]
     c3 = j({"labels":topL,"datasets":[{"label":brands[i],"data":td[brands[i]],"backgroundColor":colors[i]} for i in range(4)]})
     c4 = j({"labels":[prod_labels[k] for k in pk],"datasets":[{"label":brands[i],"data":pd[brands[i]],"backgroundColor":colors[i]} for i in range(4)]})
-    c5 = j({"labels":[topic_labels[k] for k in topic_keys],"datasets":[{"label":brands[i],"data":topic_data[brands[i]],"backgroundColor":colors[i]} for i in range(4)]})
     o1 = j({"responsive":True,"maintainAspectRatio":False,"plugins":{"legend":{"position":"top"}},"scales":{"x":{"title":{"display":True,"text":ml}},"y":{"beginAtZero":True,"title":{"display":True,"text":pl}}}})
     o2 = j({"responsive":True,"maintainAspectRatio":False,"plugins":{"legend":{"display":False}},"scales":{"y":{"beginAtZero":True,"title":{"display":True,"text":bt}}}})
     o3 = j({"responsive":True,"maintainAspectRatio":False,"indexAxis":"y","plugins":{"legend":{"position":"top"}},"scales":{"x":{"stacked":False,"title":{"display":True,"text":pl}},"y":{"title":{"display":True,"text":"Blogger"}}}})
     o4 = j({"responsive":True,"maintainAspectRatio":False,"plugins":{"legend":{"position":"top"}},"scales":{"x":{"title":{"display":True,"text":"Product"}},"y":{"beginAtZero":True,"title":{"display":True,"text":pl}}}})
-    o5 = j({"responsive":True,"maintainAspectRatio":False,"plugins":{"legend":{"position":"top"}},"scales":{"x":{"title":{"display":True,"text":topic_axis}},"y":{"beginAtZero":True,"title":{"display":True,"text":pl}}}})
 
     totals = [sum(monthly[b]) for b in brands]
     mx = max(totals)
@@ -151,7 +121,6 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
     h += '<div class="card"><h2>' + l1 + '</h2><div class="chart-box"><canvas id="c1"></canvas></div></div>'
     h += '<div class="two-cols"><div class="card"><h2>' + l2 + '</h2><div class="chart-box"><canvas id="c2"></canvas></div></div><div class="card"><h2>' + l3 + '</h2><div class="chart-box tall"><canvas id="c3"></canvas></div></div></div>'
     h += '<div class="card"><h2>' + l4 + '</h2><div class="chart-box tall"><canvas id="c4"></canvas></div></div>'
-    h += '<div class="card"><h2>' + l5 + '</h2><div class="chart-box tall"><canvas id="c5"></canvas></div></div>'
     click_js = (
         "const brandSearchUrls=" + j(search_urls) + ";"
         "function openBrandSearch(event,activeElements,chart){"
@@ -166,7 +135,7 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
         "function setChartCursor(event,activeElements,chart){"
         "chart.canvas.style.cursor=activeElements.length?'pointer':'default';"
         "}"
-        "['c1','c2','c3','c4','c5'].forEach(function(id){"
+        "['c1','c2','c3','c4'].forEach(function(id){"
         "const chart=Chart.getChart(id);"
         "if(chart){chart.options.onClick=openBrandSearch;chart.options.onHover=setChartCursor;chart.update();}"
         "});"
@@ -176,7 +145,6 @@ def gen(title, sub, l1, l2, l3, l4, l5, ml, pl, bt, lang):
     h += 'new Chart("c2",{type:"bar",data:' + c2 + ',options:' + o2 + '});'
     h += 'new Chart("c3",{type:"bar",data:' + c3 + ',options:' + o3 + '});'
     h += 'new Chart("c4",{type:"bar",data:' + c4 + ',options:' + o4 + '});'
-    h += 'new Chart("c5",{type:"bar",data:' + c5 + ',options:' + o5 + '});'
     h += click_js
     h += '</script>'
     h += '<!-- Click any chart bar/point to open Naver blog search for that brand -->'
@@ -188,8 +156,8 @@ print("Generating HTML...")
 kr_sub = '기간: 2025.07.20 ~ ' + TODAY_STR + ' | 출처: section.blog.naver.com'
 cn_sub = '期间: 2025.07.20 ~ ' + TODAY_STR + ' | 数据来源: section.blog.naver.com'
 
-kr = gen('4대 파워뱅크 브랜드 Naver Blog 비교 분석', kr_sub, '1. 게시 시계열 분석 (월별 포스팅 수)', '2. 고유 포스팅 기여자 수', '3. Top 활성 블로그', '4. 제품 카테고리 분포', '5. 콘텐츠 주제 분포', '월', '게시물 수', '기여자 수', 'kr')
-cn = gen('4大户外电源品牌 Naver Blog 对比分析', cn_sub, '1. 发帖时间趋势 (月度帖子数)', '2. 独立博主数量', '3. Top 活跃博主', '4. 产品类别分布', '5. 内容主题分布', '月份', '帖子数', '博主数', 'cn')
+kr = gen('4대 파워뱅크 브랜드 Naver Blog 비교 분석', kr_sub, '1. 게시 시계열 분석 (월별 포스팅 수)', '2. 고유 포스팅 기여자 수', '3. Top 활성 블로그', '4. 제품 카테고리 분포', '월', '게시물 수', '기여자 수', 'kr')
+cn = gen('4大户外电源品牌 Naver Blog 对比分析', cn_sub, '1. 发帖时间趋势 (月度帖子数)', '2. 独立博主数量', '3. Top 活跃博主', '4. 产品类别分布', '月份', '帖子数', '博主数', 'cn')
 
 with open('brand_comparison_dashboard.html','w',encoding='utf-8') as f: f.write(kr)
 with open('brand_comparison_dashboard_cn.html','w',encoding='utf-8') as f: f.write(cn)
